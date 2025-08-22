@@ -92,6 +92,20 @@ def parse_gpx_points_every_n_km(gpx_path: str, interval_km: float) -> List[Tuple
 
     return [(p.latitude, p.longitude) for p in sampled_points]
 
+def parse_all_gpx_points(gpx_path: str) -> List[Tuple[float, float]]:
+    """
+    Load GPX track and extract all detailed points from the track.
+    """
+    with open(gpx_path, 'r') as f:
+        gpx = gpxpy.parse(f)
+
+    all_points = []
+    for track in gpx.tracks:
+        for segment in track.segments:
+            all_points.extend(segment.points)
+
+    return [(p.latitude, p.longitude) for p in all_points]
+
 def get_nearby_parcel_lockers(
     lat: float,
     lon: float,
@@ -136,18 +150,25 @@ def get_nearby_parcel_lockers(
         return []
 
 def create_map_with_lockers(
-    route_points: List[Tuple[float, float]],
+    gpx_path: str,
     lockers: List[Dict],
     distance_markers: List[Tuple[float, float, float]]
 ) -> folium.Map:
     """
     Create a folium map with the route, parcel locker markers, and distance labels.
+    Uses all detailed points from the GPX file for a more accurate route visualization.
     """
-    center_latlon = route_points[len(route_points) // 2]
+    # Get all detailed points from GPX file
+    detailed_route_points = parse_all_gpx_points(gpx_path)
+
+    if not detailed_route_points:
+        raise ValueError(f"No points found in GPX file: {gpx_path}")
+
+    center_latlon = detailed_route_points[len(detailed_route_points) // 2]
     map_obj = folium.Map(location=center_latlon, zoom_start=10)
 
-    # Draw the trail
-    folium.PolyLine(route_points, color="blue", weight=3).add_to(map_obj)
+    # Draw the trail using all detailed points
+    folium.PolyLine(detailed_route_points, color="blue", weight=3).add_to(map_obj)
 
     # Add parcel locker markers
     for locker in lockers:
@@ -193,9 +214,9 @@ def main():
             seen.add(locker["name"])
 
     print("[INFO] Generating distance markers...")
-    distance_markers = get_distance_markers(GPX_FILE, DISTANCE_MARKERS_EACH )  
+    distance_markers = get_distance_markers(GPX_FILE, DISTANCE_MARKERS_EACH )
     print(f"[4/4] Creating map with {len(unique_lockers)} unique parcel lockers...")
-    result_map = create_map_with_lockers(route_points, unique_lockers, distance_markers)
+    result_map = create_map_with_lockers(GPX_FILE, unique_lockers, distance_markers)
     result_map.save(MAP_OUTPUT_FILE)
 
     print(f"✔ Map saved to: {MAP_OUTPUT_FILE}")
